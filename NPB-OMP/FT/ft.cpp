@@ -55,9 +55,14 @@ Authors of the OpenMP code:
 	
 */
 
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
+
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <assert.h>
 
 /*
  * ---------------------------------------------------------------------
@@ -136,6 +141,7 @@ Authors of the OpenMP code:
 #define	T_FFTZ 8
 #define T_MAX 8
 
+
 /* global variables */
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 static dcomplex sums[NITER_DEFAULT+1];
@@ -148,10 +154,37 @@ static int dims[3];
 static dcomplex (*sums)=(dcomplex*)malloc(sizeof(dcomplex)*(NITER_DEFAULT+1));
 static double (*twiddle)=(double*)malloc(sizeof(double)*(NTOTAL));
 static dcomplex (*u)=(dcomplex*)malloc(sizeof(dcomplex)*(MAXDIM));
-static dcomplex (*u0)=(dcomplex*)malloc(sizeof(dcomplex)*(NTOTAL));
-static dcomplex (*u1)=(dcomplex*)malloc(sizeof(dcomplex)*(NTOTAL));
+
+#if defined(CUSTOM_NUMA)
+static dcomplex* u0;
+static dcomplex* u1;
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	u0 = (dcomplex*)numa_alloc_interleaved_subset(sizeof(dcomplex)*(NTOTAL), bm);
+	u1 = (dcomplex*)numa_alloc_interleaved_subset(sizeof(dcomplex)*(NTOTAL), bm);
+	assert(u0 != NULL);
+	assert(u1 != NULL);
+}
+#else
+static dcomplex* u0 = (dcomplex*)malloc(sizeof(dcomplex)*(NTOTAL));
+static dcomplex* u1 = (dcomplex*)malloc(sizeof(dcomplex)*(NTOTAL));
+#endif
+
 static int (*dims)=(int*)malloc(sizeof(int)*(3));
 #endif
+
 static int niter;
 static boolean timers_enabled;
 static boolean debug;
@@ -241,6 +274,10 @@ static void verify(int d1,
 int main(int argc, char **argv){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
 #endif
 	int i;	
 	int iter;
@@ -378,6 +415,10 @@ int main(int argc, char **argv){
 			(char*)CS7);
 	if(timers_enabled==TRUE){print_timers();}
 
+	#if defined(CUSTOM_NUMA)
+	numa_free(u0, sizeof(dcomplex)*(NTOTAL));
+	numa_free(u1, sizeof(dcomplex)*(NTOTAL));
+	#endif
 	return 0;
 }
 

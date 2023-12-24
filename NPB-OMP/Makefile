@@ -8,35 +8,35 @@ default: header
 	       
 BT: bt
 bt: header
-	cd BT; $(MAKE) CLASS=$(CLASS)
+	cd BT; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 SP: sp		       
 sp: header	       
-	cd SP; $(MAKE) CLASS=$(CLASS)
+	cd SP; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 LU: lu		       
 lu: header	       
-	cd LU; $(MAKE) CLASS=$(CLASS)
+	cd LU; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 MG: mg		       
 mg: header	       
-	cd MG; $(MAKE) CLASS=$(CLASS)
+	cd MG; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 FT: ft		       
 ft: header	       
-	cd FT; $(MAKE) CLASS=$(CLASS)
+	cd FT; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 IS: is		       
 is: header	       
-	cd IS; $(MAKE) CLASS=$(CLASS)
+	cd IS; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 CG: cg		       
 cg: header	       
-	cd CG; $(MAKE) CLASS=$(CLASS)
+	cd CG; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 		       
 EP: ep		       
 ep: header	       
-	cd EP; $(MAKE) CLASS=$(CLASS)
+	cd EP; $(MAKE) clean; $(MAKE) CLASS=$(CLASS)
 
 
 # Awk script courtesy cmg@cray.com

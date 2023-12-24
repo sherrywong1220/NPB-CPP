@@ -78,6 +78,12 @@ Enter the directory from the version desired and execute:
 
 `$ make _BENCHMARK CLASS=_WORKLOAD`
 
+If you want to allocate memory using customized NUMA policy:
+
+`$ make _BENCHMARK CLASS=_WORKLOAD CUSTOM_NUMA=1`
+
+
+
 _BENCHMARKs are: 
 		
 	EP, CG, MG, IS, FT, BT, SP and LU 
@@ -101,6 +107,10 @@ Binaries are generated inside the bin folder
 Command example:
 	
 `$ ./bin/ep.A`
+
+If you want to allocate memory using customized NUMA policy:
+
+`$ NPB_NUMA_NODES=0,2 ./bin_numa/_WORKLOAD`
 
 # Compiler and Parallel Configurations
 

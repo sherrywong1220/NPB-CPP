@@ -568,7 +568,7 @@ void write_ft_info(FILE *fp, char class_npb){
 	else if(class_npb == 'A'){nx = 256; ny = 256; nz = 128; niter = 6;}
 	else if(class_npb == 'B'){nx = 512; ny = 256; nz = 256; niter = 20;}
 	else if(class_npb == 'C'){nx = 512; ny = 512; nz = 512; niter = 20;}
-	else if(class_npb == 'D'){nx = 2048; ny = 1024; nz = 1024; niter = 25;}
+	else if(class_npb == 'D'){nx = 2048; ny = 1024; nz = 1024; niter = 4;}
 	else if(class_npb == 'E'){nx = 4096; ny = 2048; nz = 2048; niter = 25;}
 	else{
 		printf("setparams: Internal error: invalid class_npb type %c\n", class_npb);
