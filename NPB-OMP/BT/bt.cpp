@@ -59,6 +59,12 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
+
 
 #define IMAX PROBLEM_SIZE
 #define JMAX PROBLEM_SIZE
@@ -102,15 +108,43 @@ static double njac[PROBLEM_SIZE+1][5][5];
 static double lhs[PROBLEM_SIZE+1][3][5][5];
 static double ce[13][5];
 #else
+static uint64_t v_size = (uint64_t)(KMAX)*(JMAXP+1)*(IMAXP+1)*(5);
 static double (*us)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*vs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*ws)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*qs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*rho_i)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*square)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
-static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
-static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
-static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
+#if defined(CUSTOM_NUMA)
+static double (*forcing)[JMAXP+1][IMAXP+1][5];
+static double (*u)[JMAXP+1][IMAXP+1][5];
+static double (*rhs)[JMAXP+1][IMAXP+1][5];
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	forcing = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*(v_size), bm);
+	u = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*(v_size), bm);
+	rhs = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*(v_size), bm);
+	assert(forcing != NULL);
+	assert(u != NULL);
+	assert(rhs != NULL);
+}
+#else
+static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*(v_size));
+static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*(v_size));
+static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*(v_size));
+#endif
 static double (*cuf)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE+1));
 static double (*q)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE+1));
 static double (*ue)[PROBLEM_SIZE+1]=(double(*)[PROBLEM_SIZE+1])malloc(sizeof(double)*((PROBLEM_SIZE+1)*(5)));
@@ -162,6 +196,10 @@ static void z_solve();
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
 #endif
 	int i, niter, step;
 	double navg, mflops, n3;
@@ -311,6 +349,11 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+	#if defined(CUSTOM_NUMA)
+	numa_free(forcing, sizeof(double)*(v_size));
+	numa_free(u, sizeof(double)*(v_size));
+	numa_free(rhs, sizeof(double)*(v_size));
+	#endif
 	return 0;
 }
 

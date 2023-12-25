@@ -58,6 +58,11 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
 
 /*
  * ---------------------------------------------------------------------
@@ -76,8 +81,12 @@ Authors of the OpenMP code:
  * include file, which is written by the sys/setparams.c program.
  * ---------------------------------------------------------------------
  */
-#define NZ (NA*(NONZER+1)*(NONZER+1))
-#define NAZ (NA*(NONZER+1))
+#define MAX_VALUE_UINT64 18446744073709551615ULL
+
+// #define NZ (NA*(NONZER+1)*(NONZER+1))
+#define NZ (static_cast<uint64_t>(NA) * static_cast<uint64_t>(NONZER + 1) * static_cast<uint64_t>(NONZER + 1))
+
+#define NAZ (static_cast<uint64_t>(NA) * static_cast<uint64_t>((NONZER+1)))
 #define T_INIT 0
 #define T_BENCH 1
 #define T_CONJ_GRAD 2
@@ -85,11 +94,11 @@ Authors of the OpenMP code:
 
 /* global variables */
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
-static int colidx[NZ];
-static int rowstr[NA+1];
-static int iv[NA];
-static int arow[NA];
-static int acol[NAZ];
+static uint64_t colidx[NZ];
+static uint64_t rowstr[NA+1];
+static uint64_t iv[NA];
+static uint64_t arow[NA];
+static uint64_t acol[NAZ];
 static double aelt[NAZ];
 static double a[NZ];
 static double x[NA+2];
@@ -98,32 +107,64 @@ static double p[NA+2];
 static double q[NA+2];
 static double r[NA+2];
 #else
-static int (*colidx)=(int*)malloc(sizeof(int)*(NZ));
-static int (*rowstr)=(int*)malloc(sizeof(int)*(NA+1));
-static int (*iv)=(int*)malloc(sizeof(int)*(NA));
-static int (*arow)=(int*)malloc(sizeof(int)*(NA));
-static int (*acol)=(int*)malloc(sizeof(int)*(NAZ));
+static uint64_t (*colidx)=(uint64_t*)malloc(sizeof(uint64_t)*(NZ));
+static uint64_t (*rowstr)=(uint64_t*)malloc(sizeof(uint64_t)*(NA+1));
+static uint64_t (*iv)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
+static uint64_t (*arow)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
+static uint64_t (*acol)=(uint64_t*)malloc(sizeof(uint64_t)*(NAZ));
 static double (*aelt)=(double*)malloc(sizeof(double)*(NAZ));
+
+#if defined(CUSTOM_NUMA)
+static double* a;
+void setup_numa() {
+	uint64_t NA_value = static_cast<uint64_t>(NA);
+	uint64_t NONZER_value = static_cast<uint64_t>(NONZER + 1);
+
+	if (NA_value > MAX_VALUE_UINT64 / (NONZER_value * NONZER_value)) {
+	    printf("Error: The calculated value exceeds the maximum value that can be represented by a uint64_t.\n");
+	    exit(1);
+	}
+
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	uint64_t node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	size_t malloc_size = sizeof(double)*(NZ);
+	printf("malloc_size=%zu\n", malloc_size);
+	a = (double*)numa_alloc_interleaved_subset(sizeof(double)*(NZ), bm);
+	assert(a != NULL);
+}
+#else
 static double (*a)=(double*)malloc(sizeof(double)*(NZ));
+#endif
 static double (*x)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*z)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*p)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*q)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*r)=(double*)malloc(sizeof(double)*(NA+2));
 #endif
-static int naa;
-static int nzz;
-static int firstrow;
-static int lastrow;
-static int firstcol;
-static int lastcol;
+static uint64_t naa;
+static uint64_t nzz;
+static uint64_t firstrow;
+static uint64_t lastrow;
+static uint64_t firstcol;
+static uint64_t lastcol;
 static double amult;
 static double tran;
 static boolean timeron;
 
 /* function prototypes */
-static void conj_grad(int colidx[],
-		int rowstr[],
+static void conj_grad(uint64_t colidx[],
+		uint64_t rowstr[],
 		double x[],
 		double z[],
 		double a[],
@@ -131,45 +172,45 @@ static void conj_grad(int colidx[],
 		double q[],
 		double r[],
 		double* rnorm);
-static int icnvrt(double x,
-		int ipwr2);
-static void makea(int n,
-		int nz,
+static uint64_t icnvrt(double x,
+		uint64_t ipwr2);
+static void makea(uint64_t n,
+		uint64_t nz,
 		double a[],
-		int colidx[],
-		int rowstr[],
-		int firstrow,
-		int lastrow,
-		int firstcol,
-		int lastcol,
-		int arow[],
-		int acol[][NONZER+1],
+		uint64_t colidx[],
+		uint64_t rowstr[],
+		uint64_t firstrow,
+		uint64_t lastrow,
+		uint64_t firstcol,
+		uint64_t lastcol,
+		uint64_t arow[],
+		uint64_t acol[][NONZER+1],
 		double aelt[][NONZER+1],
-		int iv[]);
+		uint64_t iv[]);
 static void sparse(double a[],
-		int colidx[],
-		int rowstr[],
-		int n,
-		int nz,
-		int nozer,
-		int arow[],
-		int acol[][NONZER+1],
+		uint64_t colidx[],
+		uint64_t rowstr[],
+		uint64_t n,
+		uint64_t nz,
+		uint64_t nozer,
+		uint64_t arow[],
+		uint64_t acol[][NONZER+1],
 		double aelt[][NONZER+1],
-		int firstrow,
-		int lastrow,
-		int nzloc[],
+		uint64_t firstrow,
+		uint64_t lastrow,
+		uint64_t nzloc[],
 		double rcond,
 		double shift);
-static void sprnvc(int n,
-		int nz,
-		int nn1,
+static void sprnvc(uint64_t n,
+		uint64_t nz,
+		uint64_t nn1,
 		double v[],
-		int iv[]);
-static void vecset(int n,
+		uint64_t iv[]);
+static void vecset(uint64_t n,
 		double v[],
-		int iv[],
-		int* nzv,
-		int i,
+		uint64_t iv[],
+		uint64_t* nzv,
+		uint64_t i,
 		double val);
 
 /* cg */
@@ -177,6 +218,11 @@ int main(int argc, char **argv){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
 #endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
+#endif
+
 	int	i, j, k, it;
 	double zeta;
 	double rnorm;
@@ -247,6 +293,7 @@ int main(int argc, char **argv){
 	amult   = 1220703125.0;
 	zeta    = randlc( &tran, amult );
 
+	printf("=============makea start================\n");
 	makea(naa, 
 			nzz, 
 			a, 
@@ -257,10 +304,11 @@ int main(int argc, char **argv){
 			firstcol, 
 			lastcol, 
 			arow, 
-			(int(*)[NONZER+1])(void*)acol, 
+			(uint64_t(*)[NONZER+1])(void*)acol, 
 			(double(*)[NONZER+1])(void*)aelt,
 			iv);
 
+	printf("=============makea done================\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * note: as a result of the above call to makea:
@@ -495,17 +543,20 @@ int main(int argc, char **argv){
 		}
 	}
 
+	#if defined(CUSTOM_NUMA)
+	numa_free(a, sizeof(double)*(NZ));
+	#endif
 	return 0;
 }
 
 /*
  * ---------------------------------------------------------------------
- * floating point arrays here are named as in NPB1 spec discussion of 
+ * floating pouint64_t arrays here are named as in NPB1 spec discussion of 
  * CG algorithm
  * ---------------------------------------------------------------------
  */
-static void conj_grad(int colidx[],
-		int rowstr[],
+static void conj_grad(uint64_t colidx[],
+		uint64_t rowstr[],
 		double x[],
 		double z[],
 		double a[],
@@ -513,8 +564,8 @@ static void conj_grad(int colidx[],
 		double q[],
 		double r[],
 		double* rnorm){
-	int j, k;
-	int cgit, cgitmax;
+	uint64_t j, k;
+	uint64_t cgit, cgitmax;
 	double alpha, beta, suml;
 	static double d, sum, rho, rho0;
 
@@ -674,8 +725,8 @@ static void conj_grad(int colidx[],
  * scale a double precision number x in (0,1) by a power of 2 and chop it
  * ---------------------------------------------------------------------
  */
-static int icnvrt(double x, int ipwr2){
-	return (int)(ipwr2 * x);
+static uint64_t icnvrt(double x, uint64_t ipwr2){
+	return (uint64_t)(ipwr2 * x);
 }
 
 /*
@@ -705,21 +756,21 @@ static int icnvrt(double x, int ipwr2){
  * aelt           r*8
  * ---------------------------------------------------------------------
  */
-static void makea(int n,
-		int nz,
+static void makea(uint64_t n,
+		uint64_t nz,
 		double a[],
-		int colidx[],
-		int rowstr[],
-		int firstrow,
-		int lastrow,
-		int firstcol,
-		int lastcol,
-		int arow[],
-		int acol[][NONZER+1],
+		uint64_t colidx[],
+		uint64_t rowstr[],
+		uint64_t firstrow,
+		uint64_t lastrow,
+		uint64_t firstcol,
+		uint64_t lastcol,
+		uint64_t arow[],
+		uint64_t acol[][NONZER+1],
 		double aelt[][NONZER+1],
-		int iv[]){
-	int iouter, ivelt, nzv, nn1;
-	int ivc[NONZER+1];
+		uint64_t iv[]){
+	uint64_t iouter, ivelt, nzv, nn1;
+	uint64_t ivc[NONZER+1];
 	double vc[NONZER+1];
 
 	/*
@@ -756,6 +807,7 @@ static void makea(int n,
 	 * (iv is used as  workspace)
 	 * ---------------------------------------------------------------------
 	 */
+	printf("=============sparse start================\n");
 	sparse(a,
 			colidx,
 			rowstr,
@@ -770,6 +822,7 @@ static void makea(int n,
 			iv,
 			RCOND,
 			SHIFT);
+	printf("=============sparse done================\n");
 }
 
 /*
@@ -779,20 +832,20 @@ static void makea(int n,
  * ---------------------------------------------------------------------
  */
 static void sparse(double a[],
-		int colidx[],
-		int rowstr[],
-		int n,
-		int nz,
-		int nozer,
-		int arow[],
-		int acol[][NONZER+1],
+		uint64_t colidx[],
+		uint64_t rowstr[],
+		uint64_t n,
+		uint64_t nz,
+		uint64_t nozer,
+		uint64_t arow[],
+		uint64_t acol[][NONZER+1],
 		double aelt[][NONZER+1],
-		int firstrow,
-		int lastrow,
-		int nzloc[],
+		uint64_t firstrow,
+		uint64_t lastrow,
+		uint64_t nzloc[],
 		double rcond,
 		double shift){	
-	int nrows;
+	uint64_t nrows;
 
 	/*
 	 * ---------------------------------------------------
@@ -800,7 +853,7 @@ static void sparse(double a[],
 	 * [col, row, element] tri
 	 * ---------------------------------------------------
 	 */
-	int i, j, j1, j2, nza, k, kk, nzrow, jcol;
+	uint64_t i, j, j1, j2, nza, k, kk, nzrow, jcol;
 	double size, scale, ratio, va;
 	boolean goto_40;
 
@@ -839,7 +892,7 @@ static void sparse(double a[],
 	 */
 	if(nza > nz){
 		printf("Space for matrix elements exceeded in sparse\n");
-		printf("nza, nzmax = %d, %d\n", nza, nz);
+		printf("nza, nzmax = %lu, %lu\n", nza, nz);
 		exit(EXIT_FAILURE);
 	}
 
@@ -916,7 +969,7 @@ static void sparse(double a[],
 					}
 				}
 				if(goto_40 == FALSE){
-					printf("internal error in sparse: i=%d\n", i);
+					printf("internal error in sparse: i=%lu\n", i);
 					exit(EXIT_FAILURE);
 				}
 				a[k] = a[k] + va;
@@ -965,8 +1018,8 @@ static void sparse(double a[],
  * reinitialization of mark on every one of the n calls to sprnvc
  * ---------------------------------------------------------------------
  */
-static void sprnvc(int n, int nz, int nn1, double v[], int iv[]){
-	int nzv, ii, i;
+static void sprnvc(uint64_t n, uint64_t nz, uint64_t nn1, double v[], uint64_t iv[]){
+	uint64_t nzv, ii, i;
 	double vecelt, vecloc;
 
 	nzv = 0;
@@ -1008,8 +1061,8 @@ static void sprnvc(int n, int nz, int nn1, double v[], int iv[]){
  * nzv nonzeros to val
  * --------------------------------------------------------------------
  */
-static void vecset(int n, double v[], int iv[], int* nzv, int i, double val){
-	int k;
+static void vecset(uint64_t n, double v[], uint64_t iv[], uint64_t* nzv, uint64_t i, double val){
+	uint64_t k;
 	boolean set;
 
 	set = FALSE;

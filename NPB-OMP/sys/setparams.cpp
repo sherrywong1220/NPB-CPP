@@ -403,7 +403,7 @@ void write_bt_info(FILE *fp, char class_npb){
 	else if(class_npb == 'B'){problem_size = 102; dt = "0.0003"; niter = 200;}
 	else if(class_npb == 'C'){problem_size = 162; dt = "0.0001"; niter = 200;}
 	else if(class_npb == 'D'){problem_size = 408; dt = "0.00002"; niter = 250;}
-  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.4e-5"; niter = 250;}
+  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.4e-5"; niter = 40;}
 	else{
 		printf("setparams: Internal error: invalid class_npb %c\n", class_npb);
 		exit(1);

@@ -1,0 +1,5 @@
+**/bin_numa/
+**/bin/
+*.o
+.vscode
+npbparams.hpp
