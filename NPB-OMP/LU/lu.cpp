@@ -60,6 +60,12 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <ctime>
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
 
 /*
  * ---------------------------------------------------------------------
@@ -104,6 +110,7 @@ Authors of the OpenMP code:
 #define T_L2NORM 11
 #define T_LAST 11
 
+static uint64_t v_size = static_cast<uint64_t>(ISIZ3)*static_cast<uint64_t>(ISIZ2/2*2+1)*static_cast<uint64_t>(ISIZ1/2*2+1)*static_cast<uint64_t>(5);
 /* global variables */
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 static double u[ISIZ3][ISIZ2/2*2+1][ISIZ1/2*2+1][5];
@@ -118,9 +125,63 @@ static double c[ISIZ2][ISIZ1/2*2+1][5][5];
 static double d[ISIZ2][ISIZ1/2*2+1][5][5];
 static double ce[13][5];
 #else
-static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
-static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
-static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
+#if defined(CUSTOM_NUMA)
+static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
+static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
+static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
+static double (*flux)[5];
+static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1];
+static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1];
+static double (*a)[ISIZ1/2*2+1][5][5];
+static double (*b)[ISIZ1/2*2+1][5][5];
+static double (*c)[ISIZ1/2*2+1][5][5];
+static double (*d)[ISIZ1/2*2+1][5][5];
+static double (*ce)[5];
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	u = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
+	rsd = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
+	assert(u != NULL);
+	assert(rsd != NULL);
+}
+
+void allocate_arrays(){
+	frct = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
+	flux = (double(*)[5])malloc(sizeof(double)*((ISIZ1)*(5)));
+	qs = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+	rho_i = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+	a = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
+	b = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
+	c = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
+	d = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
+	ce = (double(*)[5])malloc(sizeof(double)*((13)*(5)));
+	assert(frct != NULL);
+	assert(flux != NULL);
+	assert(qs != NULL);
+	assert(rho_i != NULL);
+	assert(a != NULL);
+	assert(b != NULL);
+	assert(c != NULL);
+	assert(d != NULL);
+	assert(ce != NULL);
+}
+
+#else
+static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
+static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
+static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
 static double (*flux)[5]=(double(*)[5])malloc(sizeof(double)*((ISIZ1)*(5)));
 static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
 static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
@@ -129,6 +190,7 @@ static double (*b)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeo
 static double (*c)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*d)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*ce)[5]=(double(*)[5])malloc(sizeof(double)*((13)*(5)));
+#endif
 #endif
 /* grid */
 static double dxi, deta, dzeta;
@@ -228,6 +290,11 @@ static boolean flag2[ISIZ1/2*2+1];
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
+	allocate_arrays();
 #endif
 	char class_npb;
 	boolean verified;
@@ -392,6 +459,11 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+
+	#if defined(CUSTOM_NUMA)
+	numa_free(u, sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+	numa_free(rsd, sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+	#endif
 	return 0;
 }
 

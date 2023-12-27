@@ -58,6 +58,13 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <ctime>
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
+
 
 #define IMAX PROBLEM_SIZE
 #define JMAX PROBLEM_SIZE
@@ -106,7 +113,7 @@ static double lhsp[IMAXP+1][IMAXP+1][5];
 static double lhsm[IMAXP+1][IMAXP+1][5];
 static double ce[13][5];
 #else
-static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
+static uint64_t v_size = (uint64_t)(KMAX)*(JMAXP+1)*(IMAXP+1)*(5);
 static double (*us)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*vs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*ws)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
@@ -114,8 +121,37 @@ static double (*qs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof
 static double (*rho_i)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*speed)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*square)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
-static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
-static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
+#if defined(CUSTOM_NUMA)
+static double (*u)[JMAXP+1][IMAXP+1][5];
+static double (*rhs)[JMAXP+1][IMAXP+1][5];
+static double (*forcing)[JMAXP+1][IMAXP+1][5];
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	u = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
+	rhs = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
+	forcing = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
+	assert(u != NULL);
+	assert(rhs != NULL);
+	assert(forcing != NULL);
+
+}
+#else
+static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
+static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
+static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
+#endif
 static double (*cv)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
 static double (*rhon)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
 static double (*rhos)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
@@ -171,6 +207,10 @@ void z_solve();
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
 #endif
 	int i, niter, step, n3;
 	double mflops, t, tmax, trecs[T_LAST+1];
@@ -236,7 +276,9 @@ int main(int argc, char* argv[]){
 	nz2=grid_points[2]-2;
 	set_constants();
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
+	printf("start exact_rhs() at %lu", std::time(nullptr));
 	exact_rhs();
+	printf("start initialize() at %lu", std::time(nullptr));
 	initialize();
 	/*
 	 * ---------------------------------------------------------------------
@@ -247,7 +289,9 @@ int main(int argc, char* argv[]){
   	{
 		adi();
 	}
+	printf("start reinitialize at %lu", std::time(nullptr));
 	initialize();
+	printf("end reinitialize at %lu", std::time(nullptr));
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
 	timer_start(1);
 	#pragma omp parallel firstprivate(niter) private(step)
@@ -323,6 +367,11 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+	#if defined(CUSTOM_NUMA)
+	numa_free(forcing, sizeof(double)*v_size);
+	numa_free(u, sizeof(double)*v_size);
+	numa_free(rhs, sizeof(double)*v_size);
+	#endif
 	return 0;
 }
 

@@ -60,10 +60,19 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
+#include <ctime>
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
 
 #define NM (2+(1<<LM)) /* actual dimension including ghost cells for communications */
-#define NV (ONE*(2+(1<<NDIM1))*(2+(1<<NDIM2))*(2+(1<<NDIM3))) /* size of rhs array */
-#define NR (((NV+NM*NM+5*NM+7*LM+6)/7)*8) /* size of residual array */
+// #define NV (ONE*(2+(1<<NDIM1))*(2+(1<<NDIM2))*(2+(1<<NDIM3))) /* size of rhs array */
+// #define NR (((NV+NM*NM+5*NM+7*LM+6)/7)*8) /* size of residual array */
+#define NV (static_cast<uint64_t>(ONE*(2+(static_cast<uint64_t>(1)<<NDIM1))*(2+(static_cast<uint64_t>(1)<<NDIM2))*(2+(static_cast<uint64_t>(1)<<NDIM3)))) /* size of rhs array */
+#define NR (static_cast<uint64_t>(((NV+NM*NM+5*NM+7*LM+6)/7)*8)) /* size of residual array */
+
 #define MAXLEVEL (LT_DEFAULT+1) /* maximum number of levels */
 #define M (NM+1) /* set at m=1024, can handle cases up to 1024^3 case */
 #define MM (10)
@@ -95,6 +104,58 @@ static double u[NR];
 static double v[NV];
 static double r[NR];
 #else
+#if defined(CUSTOM_NUMA)
+static int (*nx);
+static int (*ny);
+static int (*nz);
+static int (*m1);
+static int (*m2);
+static int (*m3);
+static int (*ir);
+static int (*debug_vec);
+static double (*u);
+static double (*v);
+static double (*r);
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	v = (double*)numa_alloc_interleaved_subset(sizeof(double)*(NV), bm);
+	r = (double*)numa_alloc_interleaved_subset(sizeof(double)*(NR), bm);
+	assert(v != NULL);
+	assert(r != NULL);
+}
+void allocate_arrays() {
+	nx = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	ny = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	nz = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	m1 = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	m2 = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	m3 = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	ir = (int*)malloc(sizeof(int)*(MAXLEVEL+1));
+	debug_vec = (int*)malloc(sizeof(int)*(8));
+	u = (double*)malloc(sizeof(double)*(NR));
+	assert(nx != NULL);
+	assert(ny != NULL);
+	assert(nz != NULL);
+	assert(m1 != NULL);
+	assert(m2 != NULL);
+	assert(m3 != NULL);
+	assert(ir != NULL);
+	assert(debug_vec != NULL);
+	assert(u != NULL);
+}
+#else
 static int (*nx)=(int*)malloc(sizeof(int)*(MAXLEVEL+1));
 static int (*ny)=(int*)malloc(sizeof(int)*(MAXLEVEL+1));
 static int (*nz)=(int*)malloc(sizeof(int)*(MAXLEVEL+1));
@@ -106,6 +167,7 @@ static int (*debug_vec)=(int*)malloc(sizeof(int)*(8));
 static double (*u)=(double*)malloc(sizeof(double)*(NR));
 static double (*v)=(double*)malloc(sizeof(double)*(NV));
 static double (*r)=(double*)malloc(sizeof(double)*(NR));
+#endif
 #endif
 static int is1, is2, is3, ie1, ie2, ie3, lt, lb;
 static boolean timeron;
@@ -130,6 +192,11 @@ static void zran3(void* pointer_z, int n1, int n2, int n3, int nx, int ny, int k
 int main(int argc, char *argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
+	allocate_arrays();
 #endif
 	/*
 	 * -------------------------------------------------------------------------
@@ -461,7 +528,10 @@ int main(int argc, char *argv[]){
 			}
 		}
 	}
-
+	#if defined(CUSTOM_NUMA)
+	numa_free(v, sizeof(double)*(NV));
+	numa_free(r, sizeof(double)*(NR));
+	#endif
 	return 0;
 }
 

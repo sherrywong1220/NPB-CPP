@@ -381,7 +381,7 @@ void write_sp_info(FILE *fp, char class_npb){
 	else if(class_npb == 'B'){problem_size = 102; dt = "0.001"; niter = 400;}
 	else if(class_npb == 'C'){problem_size = 162; dt = "0.00067"; niter = 400;}
 	else if(class_npb == 'D'){problem_size = 408; dt = "0.00030"; niter = 500;}
-  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.0001"; niter = 500;}
+  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.0001"; niter = 20;}
 	else{
 		printf("setparams: Internal error: invalid class_npb %c\n", class_npb);
 		exit(1);
@@ -403,7 +403,7 @@ void write_bt_info(FILE *fp, char class_npb){
 	else if(class_npb == 'B'){problem_size = 102; dt = "0.0003"; niter = 200;}
 	else if(class_npb == 'C'){problem_size = 162; dt = "0.0001"; niter = 200;}
 	else if(class_npb == 'D'){problem_size = 408; dt = "0.00002"; niter = 250;}
-  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.4e-5"; niter = 40;}
+  	else if(class_npb == 'E'){problem_size = 1020; dt = "0.4e-5"; niter = 5;}
 	else{
 		printf("setparams: Internal error: invalid class_npb %c\n", class_npb);
 		exit(1);
@@ -442,7 +442,7 @@ void write_lu_info(FILE *fp, char class_npb){
 	else if(class_npb == 'B'){problem_size = 102; dt_default = "2.0"; itmax = 250;}
 	else if(class_npb == 'C'){problem_size = 162; dt_default = "2.0"; itmax = 250;}
 	else if(class_npb == 'D'){problem_size = 408; dt_default = "1.0"; itmax = 300;}
-  	else if(class_npb == 'E'){problem_size = 1020; dt_default = "0.5"; itmax = 300;}
+  	else if(class_npb == 'E'){problem_size = 1020; dt_default = "0.5"; itmax = 30;}
 	else{
 		printf("setparams: Internal error: invalid class_npb %c\n", class_npb);
 		exit(1);
@@ -473,7 +473,7 @@ void write_mg_info(FILE *fp, char class_npb)
 	else if(class_npb == 'B'){problem_size = 256; nit = 20;}
 	else if(class_npb == 'C'){problem_size = 512; nit = 20;}
 	else if(class_npb == 'D'){problem_size = 1024; nit = 50;}
-	else if(class_npb == 'E'){problem_size = 2048; nit = 50;}
+	else if(class_npb == 'E'){problem_size = 2048; nit = 5;}
 	else{
 		printf("setparams: Internal error: invalid class type %c\n", class_npb);
 		exit(1);
