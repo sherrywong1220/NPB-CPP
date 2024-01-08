@@ -107,15 +107,19 @@ static double p[NA+2];
 static double q[NA+2];
 static double r[NA+2];
 #else
-static uint64_t (*colidx)=(uint64_t*)malloc(sizeof(uint64_t)*(NZ));
-static uint64_t (*rowstr)=(uint64_t*)malloc(sizeof(uint64_t)*(NA+1));
-static uint64_t (*iv)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
-static uint64_t (*arow)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
-static uint64_t (*acol)=(uint64_t*)malloc(sizeof(uint64_t)*(NAZ));
-static double (*aelt)=(double*)malloc(sizeof(double)*(NAZ));
-
 #if defined(CUSTOM_NUMA)
+static uint64_t (*colidx);
+static uint64_t (*rowstr);
+static uint64_t (*iv);
+static uint64_t (*arow);
+static uint64_t (*acol);
+static double (*aelt);
 static double* a;
+static double (*x);
+static double (*z);
+static double (*p);
+static double (*q);
+static double (*r);
 void setup_numa() {
 	uint64_t NA_value = static_cast<uint64_t>(NA);
 	uint64_t NONZER_value = static_cast<uint64_t>(NONZER + 1);
@@ -143,14 +147,44 @@ void setup_numa() {
 	a = (double*)numa_alloc_interleaved_subset(sizeof(double)*(NZ), bm);
 	assert(a != NULL);
 }
+void allocate_arrays() {
+	colidx = (uint64_t*)malloc(sizeof(uint64_t)*(NZ));
+	rowstr = (uint64_t*)malloc(sizeof(uint64_t)*(NA+1));
+	iv = (uint64_t*)malloc(sizeof(uint64_t)*(NA));
+	arow = (uint64_t*)malloc(sizeof(uint64_t)*(NA));
+	acol = (uint64_t*)malloc(sizeof(uint64_t)*(NAZ));
+	aelt = (double*)malloc(sizeof(double)*(NAZ));
+	x = (double*)malloc(sizeof(double)*(NA+2));
+	z = (double*)malloc(sizeof(double)*(NA+2));
+	p = (double*)malloc(sizeof(double)*(NA+2));
+	q = (double*)malloc(sizeof(double)*(NA+2));
+	r = (double*)malloc(sizeof(double)*(NA+2));
+	assert(colidx != NULL);
+	assert(rowstr != NULL);
+	assert(iv != NULL);
+	assert(arow != NULL);
+	assert(acol != NULL);
+	assert(aelt != NULL);
+	assert(x != NULL);
+	assert(z != NULL);
+	assert(p != NULL);
+	assert(q != NULL);
+	assert(r != NULL);
+}
 #else
+static uint64_t (*colidx)=(uint64_t*)malloc(sizeof(uint64_t)*(NZ));
+static uint64_t (*rowstr)=(uint64_t*)malloc(sizeof(uint64_t)*(NA+1));
+static uint64_t (*iv)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
+static uint64_t (*arow)=(uint64_t*)malloc(sizeof(uint64_t)*(NA));
+static uint64_t (*acol)=(uint64_t*)malloc(sizeof(uint64_t)*(NAZ));
+static double (*aelt)=(double*)malloc(sizeof(double)*(NAZ));
 static double (*a)=(double*)malloc(sizeof(double)*(NZ));
-#endif
 static double (*x)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*z)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*p)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*q)=(double*)malloc(sizeof(double)*(NA+2));
 static double (*r)=(double*)malloc(sizeof(double)*(NA+2));
+#endif
 #endif
 static uint64_t naa;
 static uint64_t nzz;
@@ -221,6 +255,7 @@ int main(int argc, char **argv){
 #if defined(CUSTOM_NUMA)
 	printf(" CUSTOM_NUMA mode on\n");
 	setup_numa();
+	allocate_arrays();
 #endif
 
 	uint64_t i, j, k, it;
