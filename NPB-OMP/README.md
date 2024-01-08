@@ -140,3 +140,12 @@ Command example:
 `$ export OMP_NUM_THREADS=32`
 or
 `TBB_NUM_THREADS` and `FF_NUM_THREADS`
+
+
+### Executing Class E
+To execute input problem with Class E, please use ulimit to update the resources limitation in Linux
+
+`ulimit -m unlimited`
+`ulimit -v unlimited`
+`ulimit -d unlimited`
+`ulimit -s unlimited`
