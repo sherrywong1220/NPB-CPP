@@ -58,14 +58,7 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
-#include <ctime>
-#include <assert.h>
-#include <cstdint>
-#ifdef CUSTOM_NUMA
-#include <numa.h>
-#endif
-
-
+#include <stddef.h>
 #define IMAX PROBLEM_SIZE
 #define JMAX PROBLEM_SIZE
 #define KMAX PROBLEM_SIZE
@@ -113,7 +106,16 @@ static double lhsp[IMAXP+1][IMAXP+1][5];
 static double lhsm[IMAXP+1][IMAXP+1][5];
 static double ce[13][5];
 #else
-static uint64_t v_size = (uint64_t)(KMAX)*(JMAXP+1)*(IMAXP+1)*(5);
+
+//double lhs[IMAXP+1][IMAXP+1][5];
+//double lhsp[IMAXP+1][IMAXP+1][5];
+//double lhsm[IMAXP+1][IMAXP+1][5];
+unsigned long size = (unsigned long)KMAX*(JMAXP+1)*(IMAXP+1) * 5;
+//unsigned long size2 = (unsigned long)KMAX*(JMAXP+1)*(IMAXP+1);
+
+//static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
+static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*size);
+
 static double (*us)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*vs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*ws)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
@@ -121,37 +123,12 @@ static double (*qs)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof
 static double (*rho_i)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*speed)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
 static double (*square)[JMAXP+1][IMAXP+1]=(double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
-#if defined(CUSTOM_NUMA)
-static double (*u)[JMAXP+1][IMAXP+1][5];
-static double (*rhs)[JMAXP+1][IMAXP+1][5];
-static double (*forcing)[JMAXP+1][IMAXP+1][5];
-void setup_numa() {
-	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
-	char* env_nodes = getenv("NPB_NUMA_NODES");
-	assert(env_nodes != NULL);
-	printf("NPB_NUMA_NODES=%s\n", env_nodes);
-	if (env_nodes != NULL) {
-		char* token = strtok(env_nodes, ",");
-		while (token != NULL) {
-        	int node = atoi(token);
-        	numa_bitmask_setbit(bm, node);
-			printf("numa_bitmask_setbit node %d\n", node);
-        	token = strtok(NULL, ",");
-		}
-	}
-	u = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
-	rhs = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
-	forcing = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
-	assert(u != NULL);
-	assert(rhs != NULL);
-	assert(forcing != NULL);
+//static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
+//static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
 
-}
-#else
-static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
-static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
-static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*v_size);
-#endif
+static double (*rhs)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*size);
+static double (*forcing)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*size);
+
 static double (*cv)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
 static double (*rhon)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
 static double (*rhos)=(double*)malloc(sizeof(double)*(PROBLEM_SIZE));
@@ -207,10 +184,6 @@ void z_solve();
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
-#endif
-#if defined(CUSTOM_NUMA)
-	printf(" CUSTOM_NUMA mode on\n");
-	setup_numa();
 #endif
 	int i, niter, step, n3;
 	double mflops, t, tmax, trecs[T_LAST+1];
@@ -276,10 +249,9 @@ int main(int argc, char* argv[]){
 	nz2=grid_points[2]-2;
 	set_constants();
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
-	printf("start exact_rhs() at %lu", std::time(nullptr));
 	exact_rhs();
-	printf("start initialize() at %lu", std::time(nullptr));
 	initialize();
+	//printf("finished initialize\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * do one time step to touch all code, and reinitialize
@@ -289,9 +261,8 @@ int main(int argc, char* argv[]){
   	{
 		adi();
 	}
-	printf("start reinitialize at %lu", std::time(nullptr));
 	initialize();
-	printf("end reinitialize at %lu", std::time(nullptr));
+	//printf("finished initialize2\n");
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
 	timer_start(1);
 	#pragma omp parallel firstprivate(niter) private(step)
@@ -307,6 +278,7 @@ int main(int argc, char* argv[]){
 	timer_stop(1);
 	tmax=timer_read(1);
 	verify(niter, &class_npb, &verified);
+	//printf("finished verify\n");
 	if(tmax!=0.0){
 		n3=grid_points[0]*grid_points[1]*grid_points[2];
 		t=(grid_points[0]+grid_points[1]+grid_points[2])/3.0;
@@ -367,11 +339,6 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
-	#if defined(CUSTOM_NUMA)
-	numa_free(forcing, sizeof(double)*v_size);
-	numa_free(u, sizeof(double)*v_size);
-	numa_free(rhs, sizeof(double)*v_size);
-	#endif
 	return 0;
 }
 
@@ -401,9 +368,13 @@ void add(){
 void adi(){
 	compute_rhs();
 	txinvr();
+	//printf("finished txinvr\n");
 	x_solve();
+	//printf("finished x_solve\n");
 	y_solve();
+	//printf("finished y_solve\n");
 	z_solve();
+	//printf("finished z_solve\n");
 	add();
 }
 
@@ -1321,7 +1292,7 @@ void ninvr(){
 	int i, j, k;
 	double r1, r2, r3, r4, r5, t1, t2;
 	int thread_id = omp_get_thread_num();
-
+	//printf("start ninvr\n");
 	if(timeron && thread_id==0){timer_start(T_NINVR);}
 	#pragma omp for
 	for(k=1; k<=nz2; k++){
@@ -1983,15 +1954,17 @@ void x_solve(){
 	int i, j, k, i1, i2, m;
 	double ru1, fac1, fac2;
 	int thread_id = omp_get_thread_num();
-
+	//printf("x-slove started\n");
 	if(timeron && thread_id==0){timer_start(T_XSOLVE);}
-
+	//if (timeron) timer_start(T_XSOLVE);
 	#pragma omp for
+	//#pragma omp parallel for default(shared) private(i,j,k,i1,i2,m, \
+                                                   ru1,fac1,fac2)
 	for(k=1; k<=nz2; k++){
-		double cv[PROBLEM_SIZE], rhon[PROBLEM_SIZE];
-		double lhs[IMAXP+1][IMAXP+1][5];
-		double lhsp[IMAXP+1][IMAXP+1][5];
-		double lhsm[IMAXP+1][IMAXP+1][5];
+		//double cv[PROBLEM_SIZE], rhon[PROBLEM_SIZE];
+		//double lhs[IMAXP+1][IMAXP+1][5];
+		//double lhsp[IMAXP+1][IMAXP+1][5];
+		//double lhsm[IMAXP+1][IMAXP+1][5];
 
 		for(j=1; j<=ny2; j++){
 			for(m=0; m<5; m++){
@@ -2253,6 +2226,7 @@ void x_solve(){
 		}
 	}
 	if(timeron && thread_id==0){timer_stop(T_XSOLVE);}
+	//if(timeron){timer_stop(T_XSOLVE);}
 	/*
 	 * ---------------------------------------------------------------------
 	 * do the block-diagonal inversion          
@@ -2277,10 +2251,10 @@ void y_solve(){
 	if(timeron && thread_id==0){timer_start(T_YSOLVE);}
 	#pragma omp for
 	for(k=1; k<=grid_points[2]-2; k++){
-		double cv[PROBLEM_SIZE], rhoq[PROBLEM_SIZE];
-		double lhs[IMAXP+1][IMAXP+1][5];
-		double lhsp[IMAXP+1][IMAXP+1][5];
-		double lhsm[IMAXP+1][IMAXP+1][5];
+		//double cv[PROBLEM_SIZE], rhoq[PROBLEM_SIZE];
+		//double lhs[IMAXP+1][IMAXP+1][5];
+		//double lhsp[IMAXP+1][IMAXP+1][5];
+		//double lhsm[IMAXP+1][IMAXP+1][5];
 
 		for(i=1; i<=nx2; i++){
 			for(m=0; m<5; m++){
@@ -2558,10 +2532,10 @@ void z_solve(){
 	if(timeron && thread_id==0){timer_start(T_ZSOLVE);}
 	#pragma omp for
 	for(j=1; j<=ny2; j++){
-		double cv[PROBLEM_SIZE], rhos[PROBLEM_SIZE];
-		double lhs[IMAXP+1][IMAXP+1][5];
-		double lhsp[IMAXP+1][IMAXP+1][5];
-		double lhsm[IMAXP+1][IMAXP+1][5];
+		//double cv[PROBLEM_SIZE], rhos[PROBLEM_SIZE];
+		//double lhs[IMAXP+1][IMAXP+1][5];
+		//double lhsp[IMAXP+1][IMAXP+1][5];
+		//double lhsm[IMAXP+1][IMAXP+1][5];
 
 		for(i=1; i<=nx2; i++){
 			for(m=0; m<5; m++){

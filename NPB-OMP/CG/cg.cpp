@@ -223,7 +223,7 @@ int main(int argc, char **argv){
 	setup_numa();
 #endif
 
-	int	i, j, k, it;
+	uint64_t i, j, k, it;
 	double zeta;
 	double rnorm;
 	double norm_temp1, norm_temp2;
@@ -294,6 +294,7 @@ int main(int argc, char **argv){
 	zeta    = randlc( &tran, amult );
 
 	printf("=============makea start================\n");
+	
 	makea(naa, 
 			nzz, 
 			a, 
@@ -307,7 +308,7 @@ int main(int argc, char **argv){
 			(uint64_t(*)[NONZER+1])(void*)acol, 
 			(double(*)[NONZER+1])(void*)aelt,
 			iv);
-
+	
 	printf("=============makea done================\n");
 	/*
 	 * ---------------------------------------------------------------------
@@ -333,6 +334,7 @@ int main(int argc, char **argv){
 		for(i = 0; i < NA+1; i++){
 			x[i] = 1.0;
 		}
+
 		#pragma omp for nowait
 		for(j = 0; j<lastcol-firstcol+1; j++){
 			q[j] = 0.0;
@@ -411,7 +413,6 @@ int main(int argc, char **argv){
 		 * --------------------------------------------------------------------
 		 */
 		for(it = 1; it <= NITER; it++){
-			
 			/* the call to the conjugate gradient routine */
 			#pragma omp master
 			if(timeron){timer_start(T_CONJ_GRAD);}
@@ -808,6 +809,7 @@ static void makea(uint64_t n,
 	 * ---------------------------------------------------------------------
 	 */
 	printf("=============sparse start================\n");
+	
 	sparse(a,
 			colidx,
 			rowstr,

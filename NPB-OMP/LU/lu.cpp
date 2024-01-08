@@ -60,13 +60,7 @@ Authors of the OpenMP code:
 #include "omp.h"
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
-#include <ctime>
-#include <assert.h>
-#include <cstdint>
-#ifdef CUSTOM_NUMA
-#include <numa.h>
-#endif
-
+#include <stddef.h>
 /*
  * ---------------------------------------------------------------------
  * driver for the performance evaluation of the solver for
@@ -110,7 +104,7 @@ Authors of the OpenMP code:
 #define T_L2NORM 11
 #define T_LAST 11
 
-static uint64_t v_size = static_cast<uint64_t>(ISIZ3)*static_cast<uint64_t>(ISIZ2/2*2+1)*static_cast<uint64_t>(ISIZ1/2*2+1)*static_cast<uint64_t>(5);
+double tv[ISIZ2*(ISIZ1/2*2+1)*5];
 /* global variables */
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 static double u[ISIZ3][ISIZ2/2*2+1][ISIZ1/2*2+1][5];
@@ -125,120 +119,75 @@ static double c[ISIZ2][ISIZ1/2*2+1][5][5];
 static double d[ISIZ2][ISIZ1/2*2+1][5][5];
 static double ce[13][5];
 #else
-#if defined(CUSTOM_NUMA)
-static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
-static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
-static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5];
-static double (*flux)[5];
-static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1];
-static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1];
-static double (*a)[ISIZ1/2*2+1][5][5];
-static double (*b)[ISIZ1/2*2+1][5][5];
-static double (*c)[ISIZ1/2*2+1][5][5];
-static double (*d)[ISIZ1/2*2+1][5][5];
-static double (*ce)[5];
-void setup_numa() {
-	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
-	char* env_nodes = getenv("NPB_NUMA_NODES");
-	assert(env_nodes != NULL);
-	printf("NPB_NUMA_NODES=%s\n", env_nodes);
-	if (env_nodes != NULL) {
-		char* token = strtok(env_nodes, ",");
-		while (token != NULL) {
-        	int node = atoi(token);
-        	numa_bitmask_setbit(bm, node);
-			printf("numa_bitmask_setbit node %d\n", node);
-        	token = strtok(NULL, ",");
-		}
-	}
-	u = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
-	rsd = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])numa_alloc_interleaved_subset(sizeof(double)*v_size, bm);
-	assert(u != NULL);
-	assert(rsd != NULL);
-}
+unsigned long size = (unsigned long)ISIZ3 * (ISIZ2/2*2+1) * (ISIZ1/2*2+1) * 5;
+//double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
+//double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
+//double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)*(5)));
 
-void allocate_arrays(){
-	frct = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
-	flux = (double(*)[5])malloc(sizeof(double)*((ISIZ1)*(5)));
-	qs = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
-	rho_i = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
-	a = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
-	b = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
-	c = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
-	d = (double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
-	ce = (double(*)[5])malloc(sizeof(double)*((13)*(5)));
-	assert(frct != NULL);
-	assert(flux != NULL);
-	assert(qs != NULL);
-	assert(rho_i != NULL);
-	assert(a != NULL);
-	assert(b != NULL);
-	assert(c != NULL);
-	assert(d != NULL);
-	assert(ce != NULL);
-}
+static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*size);
+static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*size);
+static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*size);
 
-#else
-static double (*u)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
-static double (*rsd)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
-static double (*frct)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5])malloc(sizeof(double)*v_size);
+unsigned long size2 = (unsigned long)ISIZ3 * (ISIZ2/2*2+1) * (ISIZ1/2*2+1);
 static double (*flux)[5]=(double(*)[5])malloc(sizeof(double)*((ISIZ1)*(5)));
-static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
-static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+//static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+//static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
+static double (*qs)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*size2);
+static double (*rho_i)[ISIZ2/2*2+1][ISIZ1/2*2+1]=(double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1])malloc(sizeof(double)*size2);
+
 static double (*a)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*b)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*c)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*d)[ISIZ1/2*2+1][5][5]=(double(*)[ISIZ1/2*2+1][5][5])malloc(sizeof(double)*((ISIZ2)*(ISIZ1/2*2+1)*(5)*(5)));
 static double (*ce)[5]=(double(*)[5])malloc(sizeof(double)*((13)*(5)));
 #endif
-#endif
 /* grid */
 static double dxi, deta, dzeta;
 static double tx1, tx2, tx3;
 static double ty1, ty2, ty3;
 static double tz1, tz2, tz3;
-static int nx, ny, nz;
-static int nx0, ny0, nz0;
-static int ist, iend;
-static int jst, jend;
-static int ii1, ii2;
-static int ji1, ji2;
-static int ki1, ki2;
+static size_t nx, ny, nz;
+static size_t nx0, ny0, nz0;
+static size_t ist, iend;
+static size_t jst, jend;
+static size_t ii1, ii2;
+static size_t ji1, ji2;
+static size_t ki1, ki2;
 /* dissipation */
 static double dx1, dx2, dx3, dx4, dx5;
 static double dy1, dy2, dy3, dy4, dy5;
 static double dz1, dz2, dz3, dz4, dz5;
 static double dssp;
 /* output control parameters */
-static int ipr, inorm;
+static size_t ipr, inorm;
 /* newton-raphson iteration control parameters */
 static double dt, omega, tolrsd[5], rsdnm[5], errnm[5], frc, ttotal;
-static int itmax, invert;
+static size_t itmax, invert;
 /* timer */
 static double maxtime;
 static boolean timeron;
 
 /* function prototypes */
-void blts(int nx,
-		int ny,
-		int nz,
-		int k,
+void blts(size_t nx,
+		size_t ny,
+		size_t nz,
+		size_t k,
 		double omega,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5], 
 		double ldz[][ISIZ1/2*2+1][5][5],
 		double ldy[][ISIZ1/2*2+1][5][5],
 		double ldx[][ISIZ1/2*2+1][5][5],
 		double d[][ISIZ1/2*2+1][5][5],
-		int ist,
-		int iend,
-		int jst,
-		int jend,
-		int nx0,
-		int ny0);
-void buts(int nx,
-		int ny,
-		int nz,
-		int k,
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
+		size_t nx0,
+		size_t ny0);
+void buts(size_t nx,
+		size_t ny,
+		size_t nz,
+		size_t k,
 		double omega,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5],
 		void* pointer_tv,
@@ -246,28 +195,28 @@ void buts(int nx,
 		double udx[][ISIZ1/2*2+1][5][5],
 		double udy[][ISIZ1/2*2+1][5][5],
 		double udz[][ISIZ1/2*2+1][5][5],
-		int ist,
-		int iend,
-		int jst,
-		int jend,
-		int nx0,
-		int ny0);
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
+		size_t nx0,
+		size_t ny0);
 void domain();
 void erhs();
 void error();
-void exact(int i,
-		int j,
-		int k,
+void exact(size_t i,
+		size_t j,
+		size_t k,
 		double u000ijk[]);
-void jacld(int k);
-void jacu(int k);
-void l2norm(int nx0,
-		int ny0,
-		int nz0,
-		int ist,
-		int iend,
-		int jst,
-		int jend,
+void jacld(size_t k);
+void jacu(size_t k);
+void l2norm(size_t nx0,
+		size_t ny0,
+		size_t nz0,
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5],
 		double sum[5]);
 void pintgr();
@@ -286,21 +235,46 @@ void verify(double xcr[],
 static boolean flag[ISIZ1/2*2+1];
 static boolean flag2[ISIZ1/2*2+1];
 
+int my_init()
+{
+	unsigned long int size = (long long int)ISIZ3 * (ISIZ2/2*2+1) * (ISIZ1/2*2+1) * 5;
+	double(*uu)[ISIZ2/2*2+1][ISIZ1/2*2+1][5] = (double(*)[ISIZ2/2*2+1][ISIZ1/2*2+1][5]) malloc(sizeof(double) * size);
+	if (uu == NULL) {
+		printf("malloc failed\n");
+		return 1;
+	}
+	//printf("%d %d %d %d\n", sizeof(u), sizeof(u[0]), sizeof(u[0][0]), sizeof(u[0][0][0]));
+	size_t i,j,k,m;
+	printf("ISIZ3 %d ISIZ2 %d ISIZ1 %d\n", ISIZ3, ISIZ2/2*2+1, ISIZ1/2*2+1);
+	for(i=0; i< ISIZ3; i++){
+		printf("%d\n",i);
+		for(j=0; j<ISIZ2/2*2+1; j++){
+			for(k=0; k<ISIZ1/2*2+1; k++){
+				
+				for(m=0; m<5; m++){
+					uu[i][j][k][m]=0.0;
+					//rsd[i][j][k][m]=0.0;
+					//frct[i][j][k][m]=0.0;
+				}
+				//qs[i][j][k]=0.0;
+				//rho_i[i][j][k]=0.0;
+			}
+		}
+	}
+}
 /* lu */
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
 #endif
-#if defined(CUSTOM_NUMA)
-	printf(" CUSTOM_NUMA mode on\n");
-	setup_numa();
-	allocate_arrays();
-#endif
+	//my_init();
+	//return;
+	//ssor(1);
 	char class_npb;
 	boolean verified;
 	double mflops;
 	double t, tmax, trecs[T_LAST+1];
-	int i;
+	size_t i;
 	char* t_names[T_LAST+1];
 	/*
 	 * ---------------------------------------------------------------------
@@ -343,7 +317,7 @@ int main(int argc, char* argv[]){
 	 * ---------------------------------------------------------------------
 	 */
 	setcoeff();
-
+	printf("Finished setcoeff\n");
 	#pragma omp parallel
 	{
 		/*
@@ -365,7 +339,7 @@ int main(int argc, char* argv[]){
 		 */
 		erhs();
 	} /* end parallel */
-
+	printf("Finished parallel\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * perform one SSOR iteration to touch all pages
@@ -382,19 +356,21 @@ int main(int argc, char* argv[]){
 		setbv();
 		setiv();
 	}
-
+	printf("Finished parallel 1\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * perform the SSOR iterations
 	 * ---------------------------------------------------------------------
 	 */
 	ssor(itmax);
+	printf("Finished ssor\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * compute the solution error
 	 * ---------------------------------------------------------------------
 	 */
 	error();
+	printf("Finished error\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * compute the surface integral
@@ -459,11 +435,6 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
-
-	#if defined(CUSTOM_NUMA)
-	numa_free(u, sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
-	numa_free(rsd, sizeof(double)*((ISIZ3)*(ISIZ2/2*2+1)*(ISIZ1/2*2+1)));
-	#endif
 	return 0;
 }
 
@@ -476,28 +447,28 @@ int main(int argc, char* argv[]){
  * for even number sizes only. only needed in v.
  * ---------------------------------------------------------------------
  */
-void blts(int nx,
-		int ny,
-		int nz,
-		int k,
+void blts(size_t nx,
+		size_t ny,
+		size_t nz,
+		size_t k,
 		double omega,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5], 
 		double ldz[][ISIZ1/2*2+1][5][5],
 		double ldy[][ISIZ1/2*2+1][5][5],
 		double ldx[][ISIZ1/2*2+1][5][5],
 		double d[][ISIZ1/2*2+1][5][5],
-		int ist,
-		int iend,
-		int jst,
-		int jend,
-		int nx0,
-		int ny0){
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
+		size_t nx0,
+		size_t ny0){
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, m;
+	size_t i, j, m;
 	double tmp, tmp1;
 	double tmat[5][5], tv[5];
 
@@ -663,10 +634,10 @@ void blts(int nx,
  * for even number sizes only. only needed in v.
  * ---------------------------------------------------------------------
  */
-void buts(int nx,
-		int ny,
-		int nz,
-		int k,
+void buts(size_t nx,
+		size_t ny,
+		size_t nz,
+		size_t k,
 		double omega,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5],
 		void* pointer_tv,
@@ -674,19 +645,19 @@ void buts(int nx,
 		double udx[][ISIZ1/2*2+1][5][5],
 		double udy[][ISIZ1/2*2+1][5][5],
 		double udz[][ISIZ1/2*2+1][5][5],
-		int ist,
-		int iend,
-		int jst,
-		int jend,
-		int nx0,
-		int ny0){
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
+		size_t nx0,
+		size_t ny0){
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
 	double (*tv)[ISIZ1/2*2+1][5] = (double(*)[ISIZ1/2*2+1][5])pointer_tv;
-	int i, j, m;
+	size_t i, j, m;
 	double tmp, tmp1;
 	double tmat[5][5];
 
@@ -876,6 +847,9 @@ void domain(){
 				"     CURRENTLYi%4d%4d%4d\n", nx, ny, nz);
 		exit(EXIT_FAILURE);
 	}
+
+	printf("%4d %4d %4d\n", nx, ny, nz);
+	printf("%4d %4d %4d\n", ISIZ3, ISIZ2, ISIZ1);
 	/*
 	 * ---------------------------------------------------------------------
 	 * set up the start and end in i and j extents for all processors
@@ -891,6 +865,7 @@ void domain(){
 	ji2=ny0-2;
 	ki1=2;
 	ki2=nz0-1;
+	printf("Finished Domain\n");
 }
 
 /*
@@ -904,7 +879,7 @@ void erhs(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double xi, eta, zeta;
 	double q;
 	double u21, u31, u41;
@@ -1302,7 +1277,7 @@ void error(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double tmp;
 	double u000ijk[5];
 	for(m=0;m<5;m++){errnm[m]=0.0;}
@@ -1327,13 +1302,13 @@ void error(){
  * compute the exact solution at (i,j,k)
  * ---------------------------------------------------------------------
  */
-void exact(int i, int j, int k, double u000ijk[]){
+void exact(size_t i, size_t j, size_t k, double u000ijk[]){
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int m;
+	size_t m;
 	double xi, eta, zeta;
 	xi=((double)i)/(nx0-1);
 	eta=((double)j)/(ny0-1);
@@ -1360,13 +1335,13 @@ void exact(int i, int j, int k, double u000ijk[]){
  * compute the lower triangular part of the jacobian matrix
  * ---------------------------------------------------------------------
  */
-void jacld(int k){
+void jacld(size_t k){
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j;
+	size_t i, j;
 	double r43;
 	double c1345;
 	double c34;
@@ -1649,13 +1624,13 @@ void jacld(int k){
  * compute the upper triangular part of the jacobian matrix
  * ---------------------------------------------------------------------
  */
-void jacu(int k){
+void jacu(size_t k){
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j;
+	size_t i, j;
 	double r43;
 	double c1345;
 	double c34;
@@ -1961,13 +1936,13 @@ void jacu(int k){
  * for even number sizes only.  Only needed in v.
  * ---------------------------------------------------------------------
  */
-void l2norm(int nx0,
-		int ny0,
-		int nz0,
-		int ist,
-		int iend,
-		int jst,
-		int jend,
+void l2norm(size_t nx0,
+		size_t ny0,
+		size_t nz0,
+		size_t ist,
+		size_t iend,
+		size_t jst,
+		size_t jend,
 		double v[][ISIZ2/2*2+1][ISIZ1/2*2+1][5],
 		double sum[]){
 	/*
@@ -1975,7 +1950,7 @@ void l2norm(int nx0,
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double sum0=0.0, sum1=0.0, sum2=0.0, sum3=0.0, sum4=0.0;
 
 	#pragma omp single  
@@ -2018,9 +1993,9 @@ void pintgr(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k;
-	int ibeg, ifin, ifin1;
-	int jbeg, jfin, jfin1;
+	size_t i, j, k;
+	size_t ibeg, ifin, ifin1;
+	size_t jbeg, jfin, jfin1;
 	double phi1[ISIZ3+2][ISIZ2+2];
 	double phi2[ISIZ3+2][ISIZ2+2];
 	double frc1, frc2, frc3;
@@ -2186,7 +2161,7 @@ void read_input(){
 	 * nx, ny, nz = number of grid points in x, y, z directions
 	 * ---------------------------------------------------------------------
 	 */	
-	FILE* fp; int avoid_warning;
+	FILE* fp; size_t avoid_warning;
 	if((fp=fopen("inputlu.data","r"))!=NULL){
 		printf("Reading from input file inputlu.data\n");
 		while(fgetc(fp)!='\n');
@@ -2264,7 +2239,7 @@ void rhs(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double q;
 	double tmp, utmp[ISIZ3][6], rtmp[ISIZ3][5];
 	double u21, u31, u41;
@@ -2654,21 +2629,33 @@ void setbv(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double temp1[5], temp2[5];
 	/*
 	 * ---------------------------------------------------------------------
 	 * set the dependent variable values along the top and bottom faces
 	 * ---------------------------------------------------------------------
 	 */
+	//printf("ny = %d, nx = %d, nz = %d\n", ny, nx, nz);
 	#pragma omp for
 	for(j=0; j<ny; j++){
 		for(i=0; i<nx; i++){
 			exact(i, j, 0, temp1);
 			exact(i, j, nz-1, temp2);
+			//printf("Setting top and bottom faces for i=%d, j=%d\n",i,j);
 			for(m=0; m<5; m++){
+				//printf("before m = %lu\n", m);
 				u[0][j][i][m]=temp1[m];
+				/*
+				printf(" u = %lf\n", u[0][j][i][m]);
+				printf(" temp1 = %lf\n", temp1[m]);
+				printf(" temp2 = %lf\n", temp2[m]);
+				printf("%d %d %d %d\n", nz-800,j,i,m);
+				printf(" u = %lf\n", u[nz-800][j][i][m]);
+				*/
 				u[nz-1][j][i][m]=temp2[m];
+				//printf(" u = %lf\n", u[nz-1][j][i][m]);
+				
 			}
 		}
 	}
@@ -2704,6 +2691,7 @@ void setbv(){
 			}
 		}
 	}
+	printf("Finished setting boundary values\n");
 }
 
 void setcoeff(){
@@ -2856,7 +2844,7 @@ void setiv(){
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
-	int i, j, k, m;
+	size_t i, j, k, m;
 	double xi, eta, zeta;
 	double pxi, peta, pzeta;
 	double ue_1jk[5], ue_nx0jk[5], ue_i1k[5];
@@ -2898,14 +2886,16 @@ void setiv(){
  * ---------------------------------------------------------------------
  */
 void ssor(int niter){
+	printf("Starting SSOR!!!\n");
 	/*
 	 * ---------------------------------------------------------------------
 	 * local variables
 	 * ---------------------------------------------------------------------
 	 */
+	printf("Starting SSOR\n");
 	int i, j, k, m, n;
 	int istep;
-	double tmp, tv[ISIZ2*(ISIZ1/2*2+1)*5];
+	double tmp;//, tv[ISIZ2*(ISIZ1/2*2+1)*5];
 	double delunm[5];
 	/*
 	 * ---------------------------------------------------------------------
@@ -2933,8 +2923,9 @@ void ssor(int niter){
 			}
 		}
 	}
+	printf("Starting timer\n");
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
-
+	
 	
 	#pragma omp parallel
 	{
@@ -2961,7 +2952,7 @@ void ssor(int niter){
 				rsdnm);
 	} /* end parallel */
 
-
+	printf("Finished timer\n");
 	for(i=1;i<=T_LAST;i++){timer_clear(i);}
 	timer_start(1);
 	
@@ -3217,7 +3208,7 @@ void verify(double xcr[],
 	double xcrref[5], xceref[5], xciref;
 	double xcrdif[5], xcedif[5], xcidif;
 	double epsilon, dtref=0.0;
-	int m;
+	size_t m;
 	/*
 	 * ---------------------------------------------------------------------
 	 * tolerance level
