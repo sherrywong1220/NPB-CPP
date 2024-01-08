@@ -59,6 +59,13 @@ Authors of the OpenMP code:
 #include "../common/npb-CPP.hpp"
 #include "npbparams.hpp"
 #include <stddef.h>
+#include <ctime>
+#include <assert.h>
+#include <cstdint>
+#ifdef CUSTOM_NUMA
+#include <numa.h>
+#endif
+
 #define IMAX PROBLEM_SIZE
 #define JMAX PROBLEM_SIZE
 #define KMAX PROBLEM_SIZE
@@ -80,6 +87,8 @@ Authors of the OpenMP code:
 #define T_TZETAR 14
 #define T_ADD 15
 #define T_LAST 15
+
+unsigned long size = (unsigned long)KMAX*(JMAXP+1)*(IMAXP+1) * 5;
 
 /* global variables */
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
@@ -106,11 +115,94 @@ static double lhsp[IMAXP+1][IMAXP+1][5];
 static double lhsm[IMAXP+1][IMAXP+1][5];
 static double ce[13][5];
 #else
-
+#if defined(CUSTOM_NUMA)
+static double (*u)[JMAXP+1][IMAXP+1][5];
+static double (*rhs)[JMAXP+1][IMAXP+1][5];
+static double (*forcing)[JMAXP+1][IMAXP+1][5];
+static double (*us)[JMAXP+1][IMAXP+1];
+static double (*vs)[JMAXP+1][IMAXP+1];
+static double (*ws)[JMAXP+1][IMAXP+1];
+static double (*qs)[JMAXP+1][IMAXP+1];
+static double (*rho_i)[JMAXP+1][IMAXP+1];
+static double (*speed)[JMAXP+1][IMAXP+1];
+static double (*square)[JMAXP+1][IMAXP+1];
+static double (*cv);
+static double (*rhon);
+static double (*rhos);
+static double (*rhoq);
+static double (*cuf);
+static double (*q);
+static double (*ue)[PROBLEM_SIZE];
+static double (*buf)[PROBLEM_SIZE];
+static double (*lhs)[IMAXP+1][5];
+static double (*lhsp)[IMAXP+1][5];
+static double (*lhsm)[IMAXP+1][5];
+static double (*ce)[5];
+void setup_numa() {
+	struct bitmask *bm = numa_bitmask_alloc(numa_max_node() + 1);
+	char* env_nodes = getenv("NPB_NUMA_NODES");
+	assert(env_nodes != NULL);
+	printf("NPB_NUMA_NODES=%s\n", env_nodes);
+	if (env_nodes != NULL) {
+		char* token = strtok(env_nodes, ",");
+		while (token != NULL) {
+        	int node = atoi(token);
+        	numa_bitmask_setbit(bm, node);
+			printf("numa_bitmask_setbit node %d\n", node);
+        	token = strtok(NULL, ",");
+		}
+	}
+	u = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*size, bm);
+	rhs = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*size, bm);
+	forcing = (double(*)[JMAXP+1][IMAXP+1][5])numa_alloc_interleaved_subset(sizeof(double)*size, bm);
+	assert(u != NULL);
+	assert(rhs != NULL);
+	assert(forcing != NULL);
+}
+void allocate_arrays() {
+	us = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	vs = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	ws = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	qs = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	rho_i = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	speed = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	square = (double(*)[JMAXP+1][IMAXP+1])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)));
+	cv = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	rhon = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	rhos = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	rhoq = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	cuf = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	q = (double*)malloc(sizeof(double)*(PROBLEM_SIZE));
+	ue = (double(*)[PROBLEM_SIZE])malloc(sizeof(double)*((PROBLEM_SIZE)*(5)));
+	buf = (double(*)[PROBLEM_SIZE])malloc(sizeof(double)*((PROBLEM_SIZE)*(5)));
+	lhs = (double(*)[IMAXP+1][5])malloc(sizeof(double)*((IMAXP+1)*(IMAXP+1)*(5)));
+	lhsp = (double(*)[IMAXP+1][5])malloc(sizeof(double)*((IMAXP+1)*(IMAXP+1)*(5)));
+	lhsm = (double(*)[IMAXP+1][5])malloc(sizeof(double)*((IMAXP+1)*(IMAXP+1)*(5)));
+	ce = (double(*)[5])malloc(sizeof(double)*((13)*(5)));
+	assert(us != NULL);
+	assert(vs != NULL);
+	assert(ws != NULL);
+	assert(qs != NULL);
+	assert(rho_i != NULL);
+	assert(speed != NULL);
+	assert(square != NULL);
+	assert(cv != NULL);
+	assert(rhon != NULL);
+	assert(rhos != NULL);
+	assert(rhoq != NULL);
+	assert(cuf != NULL);
+	assert(q != NULL);
+	assert(ue != NULL);
+	assert(buf != NULL);
+	assert(lhs != NULL);
+	assert(lhsp != NULL);
+	assert(lhsm != NULL);
+	assert(ce != NULL);
+}
+#else
 //double lhs[IMAXP+1][IMAXP+1][5];
 //double lhsp[IMAXP+1][IMAXP+1][5];
 //double lhsm[IMAXP+1][IMAXP+1][5];
-unsigned long size = (unsigned long)KMAX*(JMAXP+1)*(IMAXP+1) * 5;
 //unsigned long size2 = (unsigned long)KMAX*(JMAXP+1)*(IMAXP+1);
 
 //static double (*u)[JMAXP+1][IMAXP+1][5]=(double(*)[JMAXP+1][IMAXP+1][5])malloc(sizeof(double)*((KMAX)*(JMAXP+1)*(IMAXP+1)*(5)));
@@ -141,6 +233,7 @@ static double (*lhs)[IMAXP+1][5]=(double(*)[IMAXP+1][5])malloc(sizeof(double)*((
 static double (*lhsp)[IMAXP+1][5]=(double(*)[IMAXP+1][5])malloc(sizeof(double)*((IMAXP+1)*(IMAXP+1)*(5)));
 static double (*lhsm)[IMAXP+1][5]=(double(*)[IMAXP+1][5])malloc(sizeof(double)*((IMAXP+1)*(IMAXP+1)*(5)));
 static double (*ce)[5]=(double(*)[5])malloc(sizeof(double)*((13)*(5)));
+#endif
 #endif
 static double tx1, tx2, tx3,ty1, ty2, ty3, tz1, tz2, tz3, 
 	      dx1, dx2, dx3, dx4, dx5, dy1, dy2, dy3, dy4, 
@@ -184,6 +277,11 @@ void z_solve();
 int main(int argc, char* argv[]){
 #if defined(DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION)
 	printf(" DO_NOT_ALLOCATE_ARRAYS_WITH_DYNAMIC_MEMORY_AND_AS_SINGLE_DIMENSION mode on\n");
+#endif
+#if defined(CUSTOM_NUMA)
+	printf(" CUSTOM_NUMA mode on\n");
+	setup_numa();
+	allocate_arrays();
 #endif
 	int i, niter, step, n3;
 	double mflops, t, tmax, trecs[T_LAST+1];
@@ -339,6 +437,11 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+	#if defined(CUSTOM_NUMA)
+	numa_free(forcing, sizeof(double)*size);
+	numa_free(u, sizeof(double)*size);
+	numa_free(rhs, sizeof(double)*size);
+	#endif
 	return 0;
 }
 
